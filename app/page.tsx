@@ -1,113 +1,281 @@
-import Image from 'next/image'
+"use client";
+
+import { useState, useEffect } from "react";
+
+import { FieldValues, useForm } from "react-hook-form";
+import z from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+const categories = [
+  "All Categories",
+  "Groceries",
+  "Utilities",
+  "Entertainment",
+] as const;
+
+const schema = z.object({
+  description: z
+    .string()
+    .min(3, { message: "Description should be at least 3 characters." }),
+
+  amount: z.number({ invalid_type_error: "Amount is required" }),
+  category: z.enum(categories),
+});
+
+type formData = z.infer<typeof schema>;
+
+interface Expense {
+  id: number;
+  description: string;
+  amount: number;
+  category: string;
+}
 
 export default function Home() {
+  const [category, setCategory] = useState("All Categories");
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<formData>({
+    resolver: zodResolver(schema),
+  });
+
+  useEffect(() => {
+    async function fetchExpenses() {
+      const response = await fetch("http://localhost:3000/api/expenses");
+      const data = await response.json();
+      setExpenses(data.data);
+    }
+
+    fetchExpenses();
+  }, []);
+
+  // const onSubmit = async (data: FieldValues) => {
+  //   const response = await fetch("http://localhost:3000/api/expenses", {
+  //     method: "POST",
+  //     headers: {
+  //       "Content-Type": "application/json",
+  //     },
+  //     body: JSON.stringify(data),
+  //   });
+
+  //   // Parse the JSON response
+  //   const responseData = await response.json();
+
+  //   // The responseData is now available to use
+  //   setExpenses([...expenses!, responseData.data]);
+  // };
+
+  const onSubmit = async (data: FieldValues) => {
+    // Optimistically update the state
+    const newExpense = { id: Date.now(), ...data } as Expense; // Temporary id
+    setExpenses((prevExpenses) => [...prevExpenses, newExpense]);
+    reset();
+
+    try {
+      const response = await fetch("http://localhost:3000/api/expenses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      // Parse the JSON response
+      const responseData = await response.json();
+
+      // Replace the temporary expense with the actual one from the server
+      setExpenses((prevExpenses) =>
+        prevExpenses.map((expense) =>
+          expense.id === newExpense.id ? responseData.data : expense
+        )
+      );
+    } catch (error) {
+      // If the request fails, revert the state
+      setExpenses((prevExpenses) =>
+        prevExpenses.filter((expense) => expense.id !== newExpense.id)
+      );
+      // Handle error...
+    }
+  };
+
+  // const handleDelete = async (id: number) => {
+  //   await fetch(`http://localhost:3000/api/expenses/${id}`, {
+  //     method: "DELETE",
+  //   });
+
+  //   setExpenses((expenses) => expenses!.filter((expense) => expense.id !== id));
+  // };
+
+  const handleDelete = async (id: number) => {
+    // Optimistically update the state
+    setExpenses((prevExpenses) =>
+      prevExpenses.filter((expense) => expense.id !== id)
+    );
+
+    try {
+      await fetch(`http://localhost:3000/api/expenses/${id}`, {
+        method: "DELETE",
+      });
+    } catch (error) {
+      // If the request fails, revert the state
+      setExpenses((prevExpenses) => [...prevExpenses, expenses[id]]);
+      // Handle error...
+    }
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+    <main className="flex flex-col items-center">
+      {/* Form */}
+      <form onSubmit={handleSubmit(onSubmit)}>
+        <div className="form-control w-full max-w-xs">
+          <label className="label">
+            <span className="label-text">Description</span>
+          </label>
+          <input
+            {...register("description")}
+            type="text"
+            className="input input-bordered w-full max-w-xs"
+          />
+          {errors.description && (
+            <div className="flex mt-2 space-x-2 text-red-600 text-sm">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="stroke-current shrink-0 h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span>{errors.description.message}</span>
+            </div>
+          )}
         </div>
-      </div>
+        <div className="form-control w-full max-w-xs">
+          <label className="label">
+            <span className="label-text">Amount</span>
+          </label>
+          <input
+            {...register("amount", { valueAsNumber: true })}
+            type="number"
+            className="input input-bordered w-full max-w-xs"
+          />
+          {errors.amount && (
+            <div className="flex mt-2 space-x-2 text-red-600 text-sm">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="stroke-current shrink-0 h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span>{errors.amount.message}</span>
+            </div>
+          )}
+        </div>
+        <div className="form-control w-full max-w-xs">
+          <label className="label">
+            <span className="label-text">Category</span>
+          </label>
+          <select {...register("category")} className="select select-bordered">
+            {categories
+              .filter((category) => category !== "All Categories")
+              .map((category, index) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+          </select>
+          {errors.category && (
+            <div className="flex mt-2 space-x-2 text-red-600 text-sm">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="stroke-current shrink-0 h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span>{errors.category.message}</span>
+            </div>
+          )}
+        </div>
 
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
+        <button type="submit" className="btn mt-4">
+          Submit
+        </button>
+      </form>
+      {/* Form */}
 
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore the Next.js 13 playground.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
+      {/* table */}
+      <div className="overflow-x-auto mt-10">
+        <div className="form-control w-full">
+          <select
+            className="select select-bordered"
+            onChange={(e) => setCategory(e.currentTarget.value)}
+          >
+            {categories.map((category, index) => (
+              <option key={index} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </div>
+        <table className="table">
+          {/* head */}
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th>Amount</th>
+              <th>Category</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {expenses &&
+              expenses
+                .filter((data) =>
+                  category == "All Categories"
+                    ? data
+                    : data.category == category
+                )
+                .map(({ id, description, amount, category }) => (
+                  <tr key={id}>
+                    <td>{description}</td>
+                    <td>{amount} $</td>
+                    <td>{category}</td>
+                    <td>
+                      <button
+                        onClick={() => handleDelete(id)}
+                        className="btn btn-sm btn-error"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+          </tbody>
+        </table>
       </div>
     </main>
-  )
+  );
 }
